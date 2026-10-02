@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DATAFLOW AI PRO</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#eef3f8;color:#172033}
+.top{background:#0b3d91;color:white;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.top h1{margin:0;font-size:24px}.sub{font-size:12px;opacity:.85}
+.toolbar{background:white;padding:10px;display:flex;gap:7px;flex-wrap:wrap;border-bottom:1px solid #ccd6e2;position:sticky;top:0;z-index:5}
+button,select,input{font:inherit}button{border:0;background:#1261c9;color:white;padding:8px 11px;border-radius:6px;cursor:pointer}button:hover{background:#0b4fa9}
+button.alt{background:#526579}.danger{background:#c0392b}.success{background:#168a4b}
+.formula{display:flex;gap:8px;padding:9px;background:#f7f9fb;border-bottom:1px solid #d7dee7}
+.formula input{flex:1;padding:8px;border:1px solid #bbc7d4;border-radius:5px}
+.wrap{padding:14px}.gridbox{background:white;border:1px solid #bcc9d8;border-radius:8px;overflow:auto;max-height:58vh}
+table{border-collapse:collapse;min-width:900px;width:100%}th,td{border:1px solid #cbd5e1;padding:7px;min-width:110px;height:34px}
+th{background:#e8eef6;position:sticky;top:0;z-index:2}.rowhead{background:#f2f5f8;min-width:48px;width:48px;text-align:center;font-weight:bold}
+td[contenteditable=true]{background:#fff}.selected{outline:2px solid #1261c9;outline-offset:-2px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px}.card{background:white;border:1px solid #d2dce7;border-radius:8px;padding:12px}.card b{font-size:22px;display:block;margin-top:4px}
+.panel{background:white;border:1px solid #d2dce7;border-radius:8px;padding:12px;margin-top:12px}
+#chart{width:100%;height:280px;border:1px solid #d5dee8;border-radius:6px;background:white}
+.note{font-size:12px;color:#5b6775;margin-top:7px}
+@media(max-width:650px){.top h1{font-size:19px}.wrap{padding:8px}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div><h1>DATAFLOW AI PRO</h1><div class="sub">Independent Data Workspace • Developed by Er. Deerendra Sahu</div></div>
+  <div class="sub">Shri Krishna University • Session 2024–2027</div>
+</header>
+
+<div class="toolbar">
+<button onclick="demo()">Demo Data</button><button onclick="addRow()">+ Row</button><button onclick="addCol()">+ Column</button>
+<button onclick="save()">Save</button><button onclick="undo()">Undo</button><button onclick="redo()">Redo</button>
+<button onclick="sortData()">Sort</button><button onclick="filterData()">Filter</button>
+<button class="success" onclick="exportCSV()">CSV</button><button class="success" onclick="exportJSON()">JSON</button>
+<button onclick="window.print()">Print</button><button class="alt" onclick="document.documentElement.requestFullscreen?.()">Fullscreen</button>
+</div>
+
+<div class="formula"><b>Formula:</b><input id="formula" placeholder="Select a cell, then enter text or =SUM(A1:A5), =A1+B1"><button onclick="applyFormula()">Apply</button></div>
+
+<div class="wrap">
+<div class="cards">
+<div class="card">Rows<b id="rowCount">10</b></div>
+<div class="card">Columns<b id="colCount">5</b></div>
+<div class="card">Status<b id="status">Ready</b></div>
+<div class="card">Storage<b>Browser</b></div>
+</div>
+
+<div class="gridbox"><table id="grid"></table></div>
+
+<div class="panel">
+<h3>Chart Studio</h3>
+<select id="chartType" onchange="drawChart()">
+<option value="bar">Bar</option><option value="line">Line</option><option value="pie">Pie</option><option value="doughnut">Doughnut</option><option value="radar">Radar</option><option value="polar">Polar</option>
+</select>
+<button onclick="drawChart()">Generate Chart</button>
+<canvas id="chart" width="1000" height="280"></canvas>
+<div class="note">Chart uses the first column as labels and the first numeric column as values.</div>
+</div>
+
+<div class="panel">
+<h3>Image → Data (Offline Demo)</h3>
+<input id="img" type="file" accept="image/*" onchange="previewImage(event)">
+<div id="preview" class="note">Choose an image to preview it. This offline build does not require external OCR libraries.</div>
+</div>
+</div>
+
+<script>
+const initial=[
+["Product","Category","Quantity","Price","Status"],
+["Laptop","Electronics","5","55000","Available"],
+["Keyboard","Accessories","12","1200","Available"],
+["Mouse","Accessories","20","700","Available"],
+["Monitor","Electronics","8","12500","Available"],
+["Printer","Office","4","18500","Available"],
+["Headset","Accessories","15","1600","Available"],
+["SSD","Storage","10","4800","Available"],
+["Router","Network","7","3200","Available"],
+["Webcam","Electronics","9","2900","Available"]
+];
+let data=JSON.parse(localStorage.getItem("df_data")||"null")||initial.map(r=>[...r]);
+let selected={r:1,c:0}, history=[], future=[];
+
+function esc(v){return String(v??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]))}
+function render(){
+ let t=document.getElementById("grid"), out="";
+ const cols=data[0]?.length||1;
+ out+="<thead><tr><th class='rowhead'>#</th>";
+ for(let c=0;c<cols;c++)out+="<th>"+esc(data[0][c]||("Column "+(c+1)))+"</th>";
+ out+="</tr></thead><tbody>";
+ for(let r=1;r<data.length;r++){
+  out+="<tr><th class='rowhead'>"+r+"</th>";
+  for(let c=0;c<cols;c++)out+="<td contenteditable='true' data-r='"+r+"' data-c='"+c+"' onclick='selectCell(this)' oninput='cellEdit(this)'>"+esc(data[r][c])+"</td>";
+  out+="</tr>";
+ }
+ out+="</tbody>";t.innerHTML=out;
+ document.getElementById("rowCount").textContent=Math.max(0,data.length-1);
+ document.getElementById("colCount").textContent=cols;
+ document.getElementById("status").textContent="Ready";
+ drawChart();
+}
+function snapshot(){history.push(JSON.stringify(data));if(history.length>30)history.shift();future=[]}
+function cellEdit(el){snapshot();data[+el.dataset.r][+el.dataset.c]=el.innerText.trim();document.getElementById("status").textContent="Edited"}
+function selectCell(el){
+ document.querySelectorAll(".selected").forEach(x=>x.classList.remove("selected"));el.classList.add("selected");
+ selected={r:+el.dataset.r,c:+el.dataset.c};document.getElementById("formula").value=el.innerText;
+}
+function applyFormula(){
+ const inp=document.getElementById("formula").value.trim(); if(!inp)return;
+ snapshot();data[selected.r][selected.c]=evaluate(inp);render();
+}
+function colIndex(s){let n=0;for(const ch of s)n=n*26+ch.charCodeAt(0)-64;return n-1}
+function cellVal(ref){let m=ref.match(/^([A-Z]+)(\d+)$/i);if(!m)return 0;let v=data[+m[2]][colIndex(m[1].toUpperCase())];return parseFloat(v)||0}
+function evaluate(x){
+ if(!x.startsWith("="))return x;
+ let f=x.slice(1).toUpperCase();
+ let m=f.match(/^(SUM|AVERAGE|AVG|MIN|MAX)\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$/);
+ if(m){let fn=m[1],a=colIndex(m[2]),b=colIndex(m[4]),r1=+m[3],r2=+m[5],vals=[];for(let r=r1;r<=r2;r++)for(let c=a;c<=b;c++){let n=parseFloat(data[r]?.[c]);if(!isNaN(n))vals.push(n)}
+ if(!vals.length)return 0;if(fn==="SUM")return vals.reduce((a,b)=>a+b,0);if(fn==="MIN")return Math.min(...vals);if(fn==="MAX")return Math.max(...vals);return vals.reduce((a,b)=>a+b,0)/vals.length}
+ let simple=f.match(/^([A-Z]+\d+)([+\-*\/])([A-Z]+\d+)$/);if(simple){let a=cellVal(simple[1]),b=cellVal(simple[3]);return simple[2]=="+"?a+b:simple[2]=="-"?a-b:simple[2]=="*"?a*b:(b? a/b:0)}
+ return x;
+}
+function addRow(){snapshot();data.push(new Array(data[0].length).fill(""));render()}
+function addCol(){snapshot();data.forEach((r,i)=>r.push(i===0?"New Column":""));render()}
+function demo(){snapshot();data=initial.map(r=>[...r]);render()}
+function save(){localStorage.setItem("df_data",JSON.stringify(data));document.getElementById("status").textContent="Saved"}
+function undo(){if(!history.length)return;future.push(JSON.stringify(data));data=JSON.parse(history.pop());render()}
+function redo(){if(!future.length)return;history.push(JSON.stringify(data));data=JSON.parse(future.pop());render()}
+function sortData(){snapshot();let h=data[0], rows=data.slice(1).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));data=[h,...rows];render()}
+function filterData(){let q=prompt("Filter text:");if(q===null)return;let h=data[0];data=[h,...data.slice(1).filter(r=>r.join(" ").toLowerCase().includes(q.toLowerCase()))];render()}
+function exportCSV(){let csv=data.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\n");download("dataflow_ai_pro.csv",csv,"text/csv")}
+function exportJSON(){download("dataflow_ai_pro.json",JSON.stringify(data,null,2),"application/json")}
+function download(name,text,type){let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function previewImage(e){let f=e.target.files[0];if(!f)return;let u=URL.createObjectURL(f);document.getElementById("preview").innerHTML="<img src='"+u+"' style='max-width:100%;max-height:220px;margin-top:8px;border-radius:6px'><br>Image loaded successfully."}
+function drawChart(){
+ const cv=document.getElementById("chart"),ctx=cv.getContext("2d"),w=cv.width=cv.clientWidth*2||1000,h=cv.height=280*2;ctx.clearRect(0,0,w,h);
+ let labels=[],vals=[];for(let i=1;i<data.length;i++){let n=parseFloat(data[i][2]);if(!isNaN(n)){labels.push(String(data[i][0]||i));vals.push(n)}}
+ if(!vals.length){ctx.font="28px Arial";ctx.fillText("No numeric data available",30,60);return}
+ let max=Math.max(...vals)||1,type=document.getElementById("chartType").value,pad=70;
+ ctx.font="22px Arial";ctx.fillText("DATAFLOW AI PRO — "+type.toUpperCase(),20,35);
+ if(type==="pie"||type==="doughnut"||type==="polar"){
+  let cx=w/2,cy=155,r=95,total=vals.reduce((a,b)=>a+b,0),start=-Math.PI/2;
+  vals.forEach((v,i)=>{let end=start+v/total*Math.PI*2;ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,start,end);ctx.closePath();ctx.stroke();start=end});
+  if(type==="doughnut"){ctx.globalCompositeOperation="destination-out";ctx.beginPath();ctx.arc(cx,cy,45,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation="source-over"}
+ }else{
+  let bw=(w-pad*2)/vals.length*.65;
+  vals.forEach((v,i)=>{let x=pad+i*(w-pad*2)/vals.length+(w-pad*2)/vals.length*.175,y=230-v/max*150;ctx.beginPath();if(type==="bar")ctx.rect(x,y,bw,230-y);else{if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}ctx.stroke();if(type==="line"&&i<vals.length-1){let nx=pad+(i+1)*(w-pad*2)/vals.length+(w-pad*2)/vals.length*.175,ny=230-vals[i+1]/max*150;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(nx,ny);ctx.stroke()}ctx.font="14px Arial";ctx.fillText(labels[i].slice(0,10),x,250)});
+ }
+}
+render();
+</script>
+</body>
+</html>
